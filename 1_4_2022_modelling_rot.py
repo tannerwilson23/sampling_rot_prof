@@ -6,6 +6,8 @@ import os
 import numpy as np
 import theano.tensor as tt
 from astropy.table import Table
+import pickle
+import sys
 
 obs_table = Table.read("freq.dat", format="ascii")
 beta_table = Table.read("beta.dat", format="ascii")
@@ -72,13 +74,15 @@ def step(core,surface,point):
     val = dif*(x < point) + init
     return  val
 
-def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
+def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False, t=0.85):
+    # f_out = open(str(p_true)+str(s)+str(t)+"_terminal.out", 'w')
+    # sys.stdout = f_out
 
-    s = 1
+
 
     #real splittings for kic 12508433
-    l1_splittings = np.array(obs_table['delta'][:11])*1e3
-    l2_splittings = np.array(obs_table['delta'][11:])*1e3
+    #l1_splittings = np.array(obs_table['delta'][:11])*1e3
+    #l2_splittings = np.array(obs_table['delta'][11:])*1e3
 
     #generate synthetic splittings
     test_omega = step(525,187,p_true)
@@ -123,12 +127,21 @@ def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
 
 
 
-        trace = pm.sample(10000, tune=2000, chains=2,cores = 4, start = {"mu_omega_1":525,"mu_omega_2":187,"point":p_true})
+        trace = pm.sample(10000, tune=2000, chains=2,cores = 4,target_accept = t,return_inferencedata=True, start = {"mu_omega_1":525,"mu_omega_2":187,"point":p_true})
 
+    pickle_file_name_trace = str(p_true)+str(s)+str(t)+'_trace.pkl'
+    outfile_trace = open(pickle_file_name_trace,'wb')
+    pickle.dump(trace,outfile_trace)
+    outfile_trace.close()
 
+    
 
     sample = np.vstack([trace[k] for k in ["mu_omega_1","mu_omega_2", "point"]]).T
 
+    pickle_file_name_sampled = str(p_true)+str(s)+str(t)+'_pred_trace.pkl'
+    outfile_sampled = open(pickle_file_name_sampled,'wb')
+    pickle.dump(sample,outfile_sampled)
+    outfile_sampled.close()
     #plot corner plot
     corner.corner(sample,labels=[r"$\Omega_c/2 \pi$ [nHz]",r"$\Omega_s/2 \pi$ [nHz]", 'p'],
                            #quantiles=[0.16, 0.5, 0.84],
@@ -136,12 +149,18 @@ def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
                           truth_color =col,
                            show_titles=True, title_kwargs={"fontsize": 10});
     #plt.savefig('sampled'+str(p_true)+'.png',dpi=600)
-
+    plt.savefig(str(p_true)+str(s)+str(t)+'_corner.png')
     #plot sampled splittings
     plt.figure(figsize=[7.5,4])
     N_samples = 100
     with model:
         pred_samples = pm.sampling.sample_posterior_predictive(trace,samples=N_samples,var_names=['l1','l2','omega'])
+
+    pickle_file_name_samples = str(p_true)+str(s)+str(t)+'_pred_samples.pkl'
+    outfile_samples = open(pickle_file_name_samples,'wb')
+    pickle.dump(pred_samples,outfile_samples)
+    outfile_samples.close()
+
 
     l1_mean = np.mean(pred_samples['l1'],axis = 0)
     l2_mean = np.mean(pred_samples['l2'],axis = 0)
@@ -168,6 +187,7 @@ def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
 
     plt.ylabel('Rotational Splitting (nHz)')
     plt.xlabel(r'Oscillation Frequency ($\mu$Hz)')
+    plt.savefig(str(p_true)+str(s)+str(t)+'_splittings.png')
 
 
 
@@ -189,6 +209,7 @@ def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
         axs[2].plot(trace['point'][10000:],alpha=0.5)
         axs[2].set_ylabel(r'$p$ (r/R)')
         #plt.ylim(0,300)
+        plt.savefig(str(p_true)+str(s)+str(t)+'_traces.png')
 
         for ax in axs.flat:
             ax.label_outer()
@@ -211,8 +232,19 @@ def run_mcmc_sampling(p_true,s=1,col = 'tab:blue',plot_chains=False):
                               alpha = 0.5,
                                 fig = fig,
                                show_titles=True, title_kwargs={"fontsize": 10});
-    plt.show()
+    plt.savefig(str(p_true)+str(s)+str(t)+'_corners.png')
+    # f_out.close()
     return trace,pred_samples
 
 if __name__ == '__main__':
-    run_mcmc_sampling(0.2,plot_chains=True)
+    ps = np.array([0.05,0.2,0.5])
+    ss = np.array([1])
+    ts = np.array([0.8,0.85,0.88])
+    for pp in ps:
+        for sss in ss:
+            for tm in ts:
+                run_mcmc_sampling(pp,s=sss,plot_chains=True,t = tm)
+    # run_mcmc_sampling(0.05,plot_chains=True)
+    # run_mcmc_sampling(0.05,plot_chains=True)
+    # run_mcmc_sampling(0.05,plot_chains=True)
+    # run_mcmc_sampling(0.05,plot_chains=True)
